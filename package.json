@@ -1,0 +1,25 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "RhinoPay Backend",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Prince2656/my_project-backend.git"
+  },
+  "keywords": [],
+  "author": "Prince",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Prince2656/my_project-backend/issues"
+  },
+  "homepage": "https://github.com/Prince2656/my_project-backend#readme",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  }
+}
