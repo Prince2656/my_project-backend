@@ -159,6 +159,8 @@ app.post('/api/admin/approve-payment', (req, res) => {
         res.status(404).json({ success: false, message: "User not found" });
     }
 });
+const PORT = process.env.PORT || 3000;
 
-const PORT = 3000;
-app.listen(PORT, () => console.log(`Backend Live on http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log("Server Running on Port " + PORT);
+});
