@@ -1,0 +1,63 @@
+{
+  "allOrders": {
+    "L1": [
+      {
+        "id": 101,
+        "amount": 101
+      },
+      {
+        "id": 102,
+        "amount": 150
+      },
+      {
+        "id": 103,
+        "amount": 200
+      }
+    ],
+    "L2": [
+      {
+        "id": 201,
+        "amount": 250
+      },
+      {
+        "id": 202,
+        "amount": 350
+      },
+      {
+        "id": 203,
+        "amount": 400
+      }
+    ],
+    "L3": [
+      {
+        "id": 301,
+        "amount": 450
+      },
+      {
+        "id": 302,
+        "amount": 550
+      },
+      {
+        "id": 303,
+        "amount": 600
+      }
+    ]
+  },
+  "users": [
+    {
+      "phone": "1234567890",
+      "password": "123",
+      "inviteCode": "XYZ5566",
+      "wallet": {
+        "buyQuantity": 0,
+        "buyAmount": 0,
+        "sellToday": 0,
+        "totalRevenue": 0
+      },
+      "paymentDetails": {
+        "upiMethod": "",
+        "upiId": ""
+      }
+    }
+  ]
+}

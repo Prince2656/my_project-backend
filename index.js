@@ -247,6 +247,151 @@ app.post('/api/change-password', (req, res) => {
     res.json({ success: true, message: "Password updated successfully" });
 });
 
+// --------------------- REGISTER WITH REFERRAL ---------------------
+app.post('/api/register', (req, res) => {
+    const { phone, password, referredBy } = req.body; // referredBy mein invite code aayega
+    const exists = userData.users.find(u => u.phone === phone);
+    
+    if (exists) return res.json({ success: false, message: "User already exists" });
+
+    const code = generateInviteCode();
+    const newUser = {
+        phone,
+        password,
+        inviteCode: code,
+        referredBy: referredBy || null, // Kisne invite kiya
+        wallet: { buyQuantity: 0, buyAmount: 0, sellToday: 0, totalRevenue: 0 },
+        paymentDetails: { upiMethod: "", upiId: "" },
+        myReferrals: [] // Is user ne kitno ko add kiya
+    };
+
+    // Agar kisi ne invite kiya hai, toh uske account mein entry karein
+    if (referredBy) {
+        const referrer = userData.users.find(u => u.inviteCode === referredBy);
+        if (referrer) {
+            if (!referrer.myReferrals) referrer.myReferrals = [];
+            referrer.myReferrals.push(phone); // Referrer ki list mein naya banda add
+            referrer.wallet.totalRevenue += 10; // Example: ₹10 bonus for referral
+        }
+    }
+
+    userData.users.push(newUser);
+    saveUserData();
+    res.json({ success: true, inviteCode: code });
+});
+
+// --------------------- GET TEAM DATA ---------------------
+app.get('/api/team/:phone', (req, res) => {
+    const { phone } = req.params;
+    const user = userData.users.find(u => u.phone === phone);
+    
+    if (!user) return res.json({ success: false });
+
+    // Team members ki details (sirf phone aur join date)
+    const teamDetails = user.myReferrals.map(memberPhone => {
+        const member = userData.users.find(u => u.phone === memberPhone);
+        return {
+            phone: memberPhone,
+            joinedAt: new Date().toLocaleDateString() // Example date
+        };
+    });
+
+    res.json({
+        success: true,
+        teamCount: user.myReferrals.length,
+        teamMembers: teamDetails
+    });
+});
+
+// ================= BUY RP ORDER SYSTEM =================
+
+// ⭐ Order Add (Admin use karega)
+app.post('/api/order/add', (req, res) => {
+
+    const { level, amount, qty, reward, final } = req.body;
+
+    const newOrder = {
+        id: Date.now(),
+        amount,
+        qty,
+        reward,
+        final
+    };
+
+    if (!userData.allOrders["L" + level]) {
+        userData.allOrders["L" + level] = [];
+    }
+
+    userData.allOrders["L" + level].push(newOrder);
+
+    saveUserData();
+
+    res.json({
+        success: true,
+        message: "Order Added Successfully",
+        order: newOrder
+    });
+});
+
+
+// ⭐ Order List (Buy RP screen use karega)
+app.post('/api/order/list', (req, res) => {
+
+    const { level, phone } = req.body;
+
+    const user = userData.users.find(u => u.phone === phone);
+
+    if (!user) {
+        return res.json({ success: false, message: "User not found" });
+    }
+
+    const orders = userData.allOrders["L" + level] || [];
+
+    res.json({
+        success: true,
+        orders: orders,
+        wallet: user.wallet
+    });
+});
+
+
+// ⭐ Receive Order (User click karega)
+app.post('/api/order/receive', (req, res) => {
+
+    const { phone, orderId, level } = req.body;
+
+    const user = userData.users.find(u => u.phone === phone);
+
+    if (!user) {
+        return res.json({ success: false, message: "User not found" });
+    }
+
+    const levelKey = "L" + level;
+    const levelOrders = userData.allOrders[levelKey] || [];
+
+    const order = levelOrders.find(o => o.id == orderId);
+
+    if (!order) {
+        return res.json({ success: false, message: "Order not found" });
+    }
+
+    // ⭐ Wallet update
+    user.wallet.buyQuantity += Number(order.qty);
+    user.wallet.buyAmount += Number(order.amount);
+    user.wallet.totalRevenue += Number(order.reward);
+
+    // ⭐ Order remove after receive
+    userData.allOrders[levelKey] =
+        levelOrders.filter(o => o.id != orderId);
+
+    saveUserData();
+
+    res.json({
+        success: true,
+        message: "Order Received",
+        wallet: user.wallet
+    });
+});
 
 // --------------------- START SERVER ---------------------
 const PORT = process.env.PORT || 3000;
