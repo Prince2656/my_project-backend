@@ -308,12 +308,19 @@ app.get('/api/team/:phone', (req, res) => {
 // ⭐ Order Add (Admin use karega)
 app.post('/api/order/add', (req, res) => {
 
-    const { level, amount, qty, reward, final } = req.body;
+    const { level, amount, qty } = req.body;
+
+    const quantity = Number(qty) || 1;
+
+    const reward = Number(amount) * 0.05;
+
+    const final = Number(amount) + reward;
 
     const newOrder = {
         id: Date.now(),
-        amount,
-        qty,
+        amount: Number(amount),
+        qty: quantity,
+        remainingQty: quantity,   // ⭐ VERY IMPORTANT
         reward,
         final
     };
@@ -345,7 +352,22 @@ app.post('/api/order/list', (req, res) => {
         return res.json({ success: false, message: "User not found" });
     }
 
-    const orders = userData.allOrders["L" + level] || [];
+    const levelKey = "L" + level;
+
+    let orders = userData.allOrders[levelKey] || [];
+
+    // ⭐⭐⭐ HERE AUTO FIX BEFORE SEND
+    orders = orders.map(order => {
+
+        const amount = Number(order.amount) || 0;
+
+        return {
+            ...order,
+            qty: order.qty ?? 1,
+            reward: order.reward ?? amount * 0.05,
+            final: order.final ?? amount + (amount * 0.05)
+        };
+    });
 
     res.json({
         success: true,
@@ -375,21 +397,75 @@ app.post('/api/order/receive', (req, res) => {
         return res.json({ success: false, message: "Order not found" });
     }
 
-    // ⭐ Wallet update
-    user.wallet.buyQuantity += Number(order.qty);
+    // ⭐ LOCK CHECK
+    if (order.remainingQty <= 0) {
+        return res.json({
+            success: false,
+            message: "Order already full"
+        });
+    }
+
+    // ⭐ Decrease remaining qty
+    order.remainingQty -= 1;
+
+    // ⭐ Wallet Update
+    user.wallet.buyQuantity += 1;
     user.wallet.buyAmount += Number(order.amount);
     user.wallet.totalRevenue += Number(order.reward);
 
-    // ⭐ Order remove after receive
-    userData.allOrders[levelKey] =
-        levelOrders.filter(o => o.id != orderId);
+    // ⭐ If quantity finished → remove order
+    if (order.remainingQty <= 0) {
+        userData.allOrders[levelKey] =
+            levelOrders.filter(o => o.id != orderId);
+    }
 
     saveUserData();
 
     res.json({
         success: true,
         message: "Order Received",
+        remainingQty: order.remainingQty,
         wallet: user.wallet
+    });
+});
+
+// ================= AUTO FIX ALL ORDERS =================
+
+// ⭐ Server start hote hi sab order auto fix
+function fixAllOrders() {
+
+    for (let level in userData.allOrders) {
+
+        userData.allOrders[level] =
+            userData.allOrders[level].map(order => {
+
+                const amount = Number(order.amount) || 0;
+
+                return {
+                    ...order,
+                    qty: 1,
+                    reward: amount * 0.05,
+                    final: amount + (amount * 0.05)
+                };
+            });
+    }
+
+    saveUserData();
+    console.log("✅ All Orders Auto Fixed (Qty=1 Reward=5%)");
+}
+
+// ⭐ Server start par run hoga
+fixAllOrders();
+
+
+// ⭐ Manual Repair API (Browser se bhi chala sakte ho)
+app.get('/api/admin/repair-orders', (req, res) => {
+
+    fixAllOrders();
+
+    res.json({
+        success: true,
+        message: "All Orders Repaired Successfully"
     });
 });
 
