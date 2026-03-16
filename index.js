@@ -312,9 +312,8 @@ app.post('/api/order/add', (req, res) => {
 
     const quantity = Number(qty) || 1;
 
-    const reward = Number(amount) * 0.05;
-
-    const final = Number(amount) + reward;
+    const reward = Number((Number(amount) * 0.05).toFixed(2));
+    const final = Number((Number(amount) + reward).toFixed(2));
 
     const newOrder = {
         id: Date.now(),
@@ -364,8 +363,8 @@ app.post('/api/order/list', (req, res) => {
         return {
             ...order,
             qty: order.qty ?? 1,
-            reward: order.reward ?? amount * 0.05,
-            final: order.final ?? amount + (amount * 0.05)
+            reward: order.reward ?? Number((amount * 0.05).toFixed(2)),
+            final: order.final ?? Number((amount + (amount * 0.05)).toFixed(2))
         };
     });
 
