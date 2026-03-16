@@ -440,14 +440,19 @@ function fixAllOrders() {
 
                 const amount = Number(order.amount) || 0;
 
+                const reward = Number((amount * 0.05).toFixed(2));
+                const final = Number((amount + reward).toFixed(2));
+
                 return {
                     ...order,
                     qty: 1,
-                    reward: amount * 0.05,
-                    final: amount + (amount * 0.05)
+                    reward: reward,
+                    final: final
                 };
+
             });
     }
+
 
     saveUserData();
     console.log("✅ All Orders Auto Fixed (Qty=1 Reward=5%)");
