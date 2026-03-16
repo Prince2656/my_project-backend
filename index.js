@@ -5,6 +5,15 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
+const mongoose = require("mongoose");
+
+// ⭐⭐⭐ MongoDB Connection ADD
+mongoose.connect(
+"mongodb+srv://admin:p.k1234.@myprojectcluster.vhkhhpm.mongodb.net/myproject?retryWrites=true&w=majority"
+)
+.then(()=>console.log("✅ MongoDB Connected"))
+.catch(err=>console.log("❌ Mongo Error", err));
+
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());

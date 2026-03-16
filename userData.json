@@ -3,43 +3,70 @@
     "L1": [
       {
         "id": 101,
-        "amount": 101
+        "amount": 101,
+        "qty": 1,
+        "reward": 5.05,
+        "final": 106.05
       },
       {
         "id": 102,
-        "amount": 150
+        "amount": 150,
+        "qty": 1,
+        "reward": 7.5,
+        "final": 157.5
       },
       {
         "id": 103,
-        "amount": 200
+        "amount": 200,
+        "qty": 1,
+        "reward": 10,
+        "final": 210
       }
     ],
     "L2": [
       {
         "id": 201,
-        "amount": 250
+        "amount": 250,
+        "qty": 1,
+        "reward": 12.5,
+        "final": 262.5
       },
       {
         "id": 202,
-        "amount": 350
+        "amount": 350,
+        "qty": 1,
+        "reward": 17.5,
+        "final": 367.5
       },
       {
         "id": 203,
-        "amount": 400
+        "amount": 400,
+        "qty": 1,
+        "reward": 20,
+        "final": 420
       }
     ],
     "L3": [
       {
         "id": 301,
-        "amount": 450
+        "amount": 450,
+        "qty": 1,
+        "reward": 22.5,
+        "final": 472.5
       },
       {
         "id": 302,
-        "amount": 550
+        "amount": 550,
+        "qty": 1,
+        "reward": 27.5,
+        "final": 577.5
       },
       {
         "id": 303,
-        "amount": 600
+        "amount": 600,
+        "qty": 1,
+        "reward": 30,
+        "final": 630
       }
     ]
   },
