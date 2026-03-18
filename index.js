@@ -1006,6 +1006,8 @@ app.post('/api/order/receive', async (req, res) => {
         const { phone, orderId, level } = req.body;
 
         // 1. Live User aur Order dhundhein
+         orderId = Number(orderId);   // ⭐⭐⭐ VERY IMPORTANT FIX
+
         const user = await UserModel.findOne({ phone });
         const order = await OrderModel.findOne({ id: orderId });
 
