@@ -938,38 +938,52 @@ app.get('/api/team/:phone', async (req, res) => {
 // ================= BUY RP ORDER SYSTEM (MONGO SYNCED) =================
 
 // ⭐ Order Add (Admin use karega)
+// ⭐ Order Add (Admin use karega) - FIXED VERSION
 app.post('/api/order/add', async (req, res) => {
     try {
         const { level, amount, qty } = req.body;
+        
+        // Validation check taaki empty data na jaye
+        if(!level || !amount) {
+            return res.status(400).json({ success: false, message: "Level and Amount are required" });
+        }
+
         const quantity = Number(qty) || 1;
-        const reward = Number((Number(amount) * 0.05).toFixed(2));
-        const final = Number((Number(amount) + reward).toFixed(2));
+        const amt = Number(amount);
+        const reward = Number((amt * 0.05).toFixed(2));
+        const final = Number((amt + reward).toFixed(2));
+        const generatedId = Date.now(); // Ek hi ID dono jagah use karenge
 
         const newOrder = {
-            id: Date.now(),
+            orderId: generatedId, // ✅ Schema ke mutabik 'orderId' use karein
             level: "L" + level,
-            amount: Number(amount),
+            amount: amt,
             qty: quantity,
             remainingQty: quantity,
-            reward,
-            final
+            reward: reward,
+            final: final
         };
 
-        // 1. MongoDB mein save karein (Permanent)
+        // 1. MongoDB mein save karein
         await OrderModel.create(newOrder);
 
-        // 2. JSON Backup mein add karein
+        // 2. JSON Backup mein add karein (Sync ke liye)
         const levelKey = "L" + level;
         if (!userData.allOrders[levelKey]) userData.allOrders[levelKey] = [];
-        userData.allOrders[levelKey].push(newOrder);
+        
+        // JSON ke liye hum 'id' aur 'orderId' dono rakh lete hain safety ke liye
+        userData.allOrders[levelKey].push({ ...newOrder, id: generatedId });
         saveUserData();
 
+        console.log(`✅ New Order Added: Level ${level}, Amount ${amount}`);
         res.json({ success: true, message: "Order Added Successfully", order: newOrder });
+        
     } catch (err) {
-        console.error("Add Order Error:", err);
-        res.status(500).json({ success: false, message: "Server Error" });
+        console.error("❌ Add Order Error:", err);
+        res.status(500).json({ success: false, message: "Server Error: " + err.message });
     }
 });
+
 
 // ⭐ Order List (Buy RP screen)
 app.post('/api/order/list', async (req, res) => {
