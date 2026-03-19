@@ -213,12 +213,35 @@ app.post('/api/payment-request', async (req, res) => {
 });
 
 // ADMIN & TEAM
+// Is API ko backend mein update karein
+// ⭐ Is API ko update karein taaki history bhi dikhe
 app.get('/api/admin/dashboard-data', async (req, res) => {
-    const pendingPayments = await PaymentModel.find({ status: "Pending" });
-    const withdrawRequests = await WithdrawModel.find({ status: "Pending" });
-    const totalUsers = await UserModel.countDocuments();
-    res.json({ success: true, pendingPayments, withdrawRequests, totalUsers });
+    try {
+        // Sirf Pending payments (jo approve karne ke liye hain)
+        const pendingPayments = await PaymentModel.find({ status: "Pending" });
+        
+        // ⭐ Saari payments (Approved, Rejected, Pending) history ke liye
+        const allPayments = await PaymentModel.find({}).sort({ id: -1 }).limit(100); 
+
+        // Sirf Pending withdrawals
+        const withdrawRequests = await WithdrawModel.find({ status: "Pending" });
+        
+        const totalUsers = await UserModel.countDocuments();
+
+        res.json({ 
+            success: true, 
+            pendingPayments, 
+            allPayments, // Ye line zaroori hai
+            withdrawRequests, 
+            totalUsers 
+        });
+    } catch (err) {
+        console.error("Dashboard Error:", err);
+        res.status(500).json({ success: false });
+    }
 });
+
+
 //================== ⭐ ADMIN PAYMENT APPROVAL (FIXED: Buy Today Update) ⭐ ==================
 app.post('/api/admin/approve-payment', async (req, res) => {
     try {
