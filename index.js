@@ -1003,62 +1003,62 @@ app.post('/api/order/list', async (req, res) => {
 // ⭐ Receive Order (User click karega)
 app.post('/api/order/receive', async (req, res) => {
     try {
-        const { phone, orderId, level } = req.body;
-
-        // 1. Live User aur Order dhundhein
-         orderId = Number(orderId);   // ⭐⭐⭐ VERY IMPORTANT FIX
+        // 1. 'let' use karein taaki hum value change kar sakein
+        let { phone, orderId, level } = req.body;
+        orderId = Number(orderId); 
 
         const user = await UserModel.findOne({ phone });
         const order = await OrderModel.findOne({ id: orderId });
 
-        if (!user || !order) return res.json({ success: false, message: "User or Order not found" });
+        if (!user || !order) {
+            return res.status(404).json({ success: false, message: "User or Order not found" });
+        }
 
-        // 2. LOCK CHECK (Quantity check)
         if (order.remainingQty <= 0) {
             return res.json({ success: false, message: "Order already full" });
         }
 
-        // 3. ⭐ UPDATE ORDER (Mongo)
+        // 2. MongoDB Updates
         order.remainingQty -= 1;
         await order.save();
 
-        // 4. ⭐ UPDATE USER WALLET (Mongo - Permanent)
         user.wallet.buyQuantity += 1;
         user.wallet.buyAmount += Number(order.amount);
         user.wallet.totalRevenue += Number(order.reward);
         await user.save();
 
-        // 5. JSON SYNC (Backup)
+        // 3. JSON SYNC (Safe Check)
         const levelKey = "L" + level;
-        if (userData.allOrders[levelKey]) {
-            const jsonOrder = userData.allOrders[levelKey].find(o => o.id == orderId);
-            if (jsonOrder) {
-                jsonOrder.remainingQty -= 1;
-                if (jsonOrder.remainingQty <= 0) {
-                    userData.allOrders[levelKey] = userData.allOrders[levelKey].filter(o => o.id != orderId);
+        if (userData.allOrders && userData.allOrders[levelKey]) {
+            const jsonOrderIndex = userData.allOrders[levelKey].findIndex(o => o.id == orderId);
+            if (jsonOrderIndex !== -1) {
+                userData.allOrders[levelKey][jsonOrderIndex].remainingQty -= 1;
+                if (userData.allOrders[levelKey][jsonOrderIndex].remainingQty <= 0) {
+                    userData.allOrders[levelKey].splice(jsonOrderIndex, 1);
                 }
             }
         }
-        
-        // JSON User Sync
+
         const jsonUser = userData.users.find(u => u.phone === phone);
         if (jsonUser) {
             jsonUser.wallet = user.wallet;
         }
         saveUserData();
 
+        // Success Response
         res.json({
             success: true,
-            message: "Order Received",
+            message: "Order Received Successfully",
             remainingQty: order.remainingQty,
             wallet: user.wallet
         });
 
     } catch (err) {
-        console.error("Receive Order Error:", err);
-        res.status(500).json({ success: false, message: "Server Error" });
+        console.error("❌ Receive Order Error:", err);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 });
+
 
 
 // ================= AUTO FIX ALL ORDERS (SYNCED) =================
