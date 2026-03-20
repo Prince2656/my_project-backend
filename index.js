@@ -98,6 +98,7 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
+
 // LOGIN API
 app.post('/api/login', async (req, res) => {
     try {
@@ -247,6 +248,47 @@ app.get('/api/admin/dashboard-data', async (req, res) => {
     const withdrawRequests = await WithdrawModel.find({ status: "Pending" });
     res.json({ success: true, pendingPayments, withdrawRequests });
 });
+// ================== ⭐ ADMIN: ADD ORDER API ⭐ ==================
+
+app.post('/api/admin/add-order', async (req, res) => {
+    try {
+        const { level, amount, qty, reward } = req.body;
+
+        // Validation: Check karein sab kuch aaya hai ya nahi
+        if (!level || !amount || !qty || !reward) {
+            return res.json({ success: false, message: "Please fill all fields (level, amount, qty, reward)" });
+        }
+
+        // 1. Unique orderId generate karein (Date.now() use kar sakte hain)
+        const orderId = Math.floor(100000 + Math.random() * 900000); // 6 digit random number
+
+        // 2. Final Amount calculate karein (Amount + Reward)
+        const finalAmount = Number(amount) + Number(reward);
+
+        // 3. Naya Order create karein
+        const newOrder = await OrderModel.create({
+            level: level,             // Example: "L1", "L2"
+            orderId: orderId,         // Unique ID
+            amount: Number(amount),
+            qty: Number(qty),
+            remainingQty: Number(qty),
+            reward: Number(reward),
+            final: finalAmount,
+            createdAt: new Date()
+        });
+
+        res.json({ 
+            success: true, 
+            message: "Order added successfully to " + level, 
+            order: newOrder 
+        });
+
+    } catch (err) {
+        console.error("Add Order Error:", err);
+        res.status(500).json({ success: false, message: "Server Error: " + err.message });
+    }
+});
+
 // ================== ⭐ ORDER LISTING API (MISSING ONE) ⭐ ==================
 
 app.post('/api/order/list', async (req, res) => {
