@@ -9,23 +9,26 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// MongoDB Connection
+// --- MongoDB Connection ---
 const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://admin:p.k1234.@myprojectcluster.vhkhhpm.mongodb.net/myproject?retryWrites=true&w=majority";
 mongoose.connect(MONGO_URI)
     .then(() => console.log("✅ MongoDB Connected"))
     .catch(err => console.log("❌ Mongo Error:", err));
-    const UserSchema = new mongoose.Schema({
+
+// --- Schemas & Models (Merged & Fixed Duplicates) ---
+
+const UserSchema = new mongoose.Schema({
     phone: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     inviteCode: { type: String, unique: true },
-    referredBy: { type: String, default: null },
+    referredBy: { type: String, default: null }, // Phone of inviter
     isFrozen: { type: Boolean, default: false },
     wallet: {
-        buyQuantity: { type: Number, default: 0 },   // Today's Order Count
-        buyAmount: { type: Number, default: 0 },     // Home Page Total
-        buyToday: { type: Number, default: 0 },      // Today's Total Amount
-        todayRevenue: { type: Number, default: 0 },  // Today's Profit
-        totalRevenue: { type: Number, default: 0 },  // Withdraw-able Balance
+        buyQuantity: { type: Number, default: 0 },
+        buyAmount: { type: Number, default: 0 },
+        buyToday: { type: Number, default: 0 },
+        todayRevenue: { type: Number, default: 0 },
+        totalRevenue: { type: Number, default: 0 },
         sellToday: { type: Number, default: 0 }
     },
     paymentDetails: { upiMethod: String, upiId: String, boundAt: String },
@@ -33,29 +36,58 @@ mongoose.connect(MONGO_URI)
     createdAt: { type: Date, default: Date.now }
 }, { versionKey: false });
 
-const OrderSchema = new mongoose.Schema({ level: String, orderId: { type: Number, unique: true }, amount: Number, qty: Number, remainingQty: Number, reward: Number, final: Number, createdAt: { type: Date, default: Date.now } }, { versionKey: false });
-const PaymentSchema = new mongoose.Schema({ id: Number, phone: String, amount: Number, app: String, utr: String, status: String, createdAt: String }, { versionKey: false });
-const WithdrawSchema = new mongoose.Schema({ id: Number, phone: String, amount: Number, charge: Number, finalAmount: Number, status: String, upiDetails: Object, createdAt: String }, { versionKey: false });
+const OrderSchema = new mongoose.Schema({ 
+    level: String, 
+    orderId: { type: Number, unique: true }, 
+    amount: Number, 
+    qty: Number, 
+    remainingQty: Number, 
+    reward: Number, 
+    final: Number, 
+    createdAt: { type: Date, default: Date.now } 
+}, { versionKey: false });
 
-const UserModel = mongoose.model("users", UserSchema);
-const OrderModel = mongoose.model("orders", OrderSchema);
-const PaymentModel = mongoose.model("payments", PaymentSchema);
-const WithdrawModel = mongoose.model("withdraws", WithdrawSchema);
-// Register API with Invite Logic
+const PaymentRequestSchema = new mongoose.Schema({
+    phone: String,
+    orderId: Number,
+    amount: Number,
+    utr: { type: String, unique: true },
+    app: String,
+    status: { type: String, default: "Pending" },
+    createdAt: { type: Date, default: Date.now }
+}, { versionKey: false });
+
+const WithdrawSchema = new mongoose.Schema({
+    phone: String,
+    amount: Number,
+    charge: Number,
+    finalAmount: Number,
+    status: { type: String, default: "Pending" },
+    upiDetails: Object,
+    createdAt: { type: Date, default: Date.now }
+}, { versionKey: false });
+
+const User = mongoose.model("users", UserSchema);
+const Order = mongoose.model("orders", OrderSchema);
+const PaymentRequest = mongoose.model("payments", PaymentRequestSchema);
+const Withdraw = mongoose.model("withdraws", WithdrawSchema);
+
+// --- Auth APIs ---
+
 app.post('/api/register', async (req, res) => {
     try {
         const { phone, password, inviteCode } = req.body;
-        const exists = await UserModel.findOne({ phone: phone.trim() });
+        const exists = await User.findOne({ phone: phone.trim() });
         if (exists) return res.json({ success: false, message: "Phone already registered" });
 
         let referredByPhone = null;
         if (inviteCode) {
-            const inviter = await UserModel.findOne({ inviteCode: inviteCode.toUpperCase() });
+            const inviter = await User.findOne({ inviteCode: inviteCode.toUpperCase() });
             if (inviter) referredByPhone = inviter.phone;
             else return res.json({ success: false, message: "Invalid Invite Code" });
         }
 
-        const newUser = await UserModel.create({
+        const newUser = await User.create({
             phone: phone.trim(),
             password,
             referredBy: referredByPhone,
@@ -63,94 +95,166 @@ app.post('/api/register', async (req, res) => {
         });
 
         if (referredByPhone) {
-            await UserModel.updateOne({ phone: referredByPhone }, { $push: { myReferrals: phone.trim() } });
+            await User.updateOne({ phone: referredByPhone }, { $push: { myReferrals: phone.trim() } });
         }
-        res.json({ success: true, message: "Registered Successfully", data: newUser });
+        res.json({ success: true, message: "Registered Successfully" });
     } catch (err) { res.status(500).json({ success: false }); }
 });
 
-// Login API
 app.post('/api/login', async (req, res) => {
     try {
         const { phone, password } = req.body;
-        const user = await UserModel.findOne({ phone: phone.trim(), password });
+        const user = await User.findOne({ phone: phone.trim(), password });
         if (!user) return res.json({ success: false, message: "Invalid Phone or Password" });
         if (user.isFrozen) return res.json({ success: false, message: "Account Blocked" });
         res.json({ success: true, data: user });
     } catch (err) { res.status(500).json({ success: false }); }
 });
 
-// Order Receive - Updates Home Page & Balance
-app.post('/api/order/receive', async (req, res) => {
-    try {
-        const { phone, orderId, utr } = req.body;
-        const user = await UserModel.findOne({ phone: phone.trim() });
-        const order = await OrderModel.findOne({ orderId: Number(orderId) });
-        if (!user || !order) return res.json({ success: false, message: "Not found" });
+// --- Order & Stock APIs ---
 
-        user.wallet.buyQuantity += 1;
-        user.wallet.buyAmount += Number(order.amount);
-        user.wallet.buyToday += Number(order.amount);
-        user.wallet.todayRevenue += Number(order.reward);
-        user.wallet.totalRevenue += (Number(order.amount) + Number(order.reward));
-
-        user.markModified('wallet');
-        await user.save();
-        await PaymentModel.create({ id: Date.now(), phone: phone.trim(), amount: Number(order.amount), utr, status: "Pending", createdAt: new Date().toISOString() });
-        res.json({ success: true, message: "Order Received!" });
-    } catch (err) { res.status(500).json({ success: false }); }
-});
-
-// Backend API to send orders based on level
 app.post('/api/order/list', async (req, res) => {
     try {
         const { level } = req.body;
-        // Level ke orders dhundo (L1, L2, etc.)
-        const orders = await OrderModel.find({ level: level }).sort({ amount: 1 });
+        const orders = await Order.find({ level, remainingQty: { $gt: 0 } }).sort({ amount: 1 });
         res.json({ success: true, orders });
+    } catch (err) { res.status(500).json({ success: false }); }
+});
+
+// ⭐ ADMIN: Naya Order (Product) Add Karne Ke Liye
+app.post('/api/admin/add-order', async (req, res) => {
+    try {
+        const { level, amount, qty, reward } = req.body;
+
+        // Ek unique orderId generate karte hain timestamp se
+        const orderId = Math.floor(100000 + Math.random() * 900000);
+
+        const newOrder = new Order({
+            level,           // e.g., "L1"
+            orderId: orderId,
+            amount: Number(amount),
+            qty: Number(qty),
+            remainingQty: Number(qty), // Shuruat mein full stock rahega
+            reward: Number(reward),
+            final: Number(amount) + Number(reward) // Total return
+        });
+
+        await newOrder.save();
+        res.json({ success: true, message: "Order (Product) Added Successfully!", orderId });
+    } catch (err) {
+        console.error("Add Order Error:", err);
+        res.status(500).json({ success: false, message: "Server Error: Order add nahi ho paya" });
+    }
+});
+
+// ⭐ ADMIN: Saare Orders (Products) Dekhne Ke Liye
+app.get('/api/admin/all-orders', async (req, res) => {
+    try {
+        const allOrders = await Order.find().sort({ createdAt: -1 });
+        res.json({ success: true, orders: allOrders });
     } catch (err) {
         res.status(500).json({ success: false });
     }
 });
 
-// Withdraw - Deducts ONLY from totalRevenue
-app.post('/api/withdraw', async (req, res) => {
+app.post('/api/order/receive', async (req, res) => {
     try {
-        const { phone, amount } = req.body;
-        const user = await UserModel.findOne({ phone: phone.trim() });
-        if (!user || user.wallet.totalRevenue < Number(amount)) return res.json({ success: false, message: "Insufficient Balance" });
+        const { phone, orderId, utr } = req.body;
+        const utrExists = await PaymentRequest.findOne({ utr });
+        if (utrExists) return res.json({ success: false, message: "UTR already used!" });
 
-        user.wallet.totalRevenue -= Number(amount);
-        user.wallet.sellToday += Number(amount);
-        user.markModified('wallet');
-        await user.save();
+        const order = await Order.findOne({ orderId: Number(orderId), remainingQty: { $gt: 0 } });
+        if (!order) return res.json({ success: false, message: "Sold Out!" });
 
-        let charge = Number(amount) < 500 ? Number((Number(amount) * 0.03).toFixed(2)) : 0;
-        await WithdrawModel.create({ id: Date.now(), phone, amount: Number(amount), charge, finalAmount: Number(amount)-charge, status: "Pending", upiDetails: user.paymentDetails, createdAt: new Date().toISOString() });
-        res.json({ success: true, message: "Withdrawal Sent" });
+        await Order.updateOne({ orderId }, { $inc: { remainingQty: -1 } });
+        await PaymentRequest.create({
+            phone: phone.trim(),
+            orderId,
+            amount: order.amount,
+            utr,
+            status: "Pending"
+        });
+        res.json({ success: true, message: "Request Sent! Stock reserved." });
     } catch (err) { res.status(500).json({ success: false }); }
 });
 
-// Midnight Reset Logic
-cron.schedule('0 0 * * *', async () => {
-    await UserModel.updateMany({}, { $set: { "wallet.sellToday": 0, "wallet.buyToday": 0, "wallet.todayRevenue": 0, "wallet.buyQuantity": 0 } });
-    console.log("✅ Daily Reset Complete");
-}, { timezone: "Asia/Kolkata" });
+// --- Admin & Commission Logic ⭐ ---
 
-// Admin Dashboard Data
-app.get('/api/admin/dashboard-data', async (req, res) => {
-    const pendingPayments = await PaymentModel.find({ status: "Pending" });
-    const withdrawRequests = await WithdrawModel.find({ status: "Pending" });
-    const dStats = await PaymentModel.aggregate([{ $match: { status: "Success" } }, { $group: { _id: null, total: { $sum: "$amount" } } }]);
-    const pStats = await WithdrawModel.aggregate([{ $match: { status: "Approved" } }, { $group: { _id: null, total: { $sum: "$amount" } } }]);
+app.post('/api/admin/approve-recharge', async (req, res) => {
+    const { paymentId, status } = req.body;
+    try {
+        const payment = await PaymentRequest.findById(paymentId);
+        if (!payment || payment.status !== "Pending") return res.json({ success: false, message: "Already processed" });
 
-    res.json({ 
-        success: true, pendingPayments, withdrawRequests, 
-        stats: { totalDeposit: dStats[0]?.total || 0, totalWithdraw: pStats[0]?.total || 0 }
-    });
+        if (status === "Success") {
+            // 1. User ka balance update karein
+            const user = await User.findOneAndUpdate(
+                { phone: payment.phone },
+                { $inc: { "wallet.buyAmount": payment.amount, "wallet.buyToday": payment.amount } },
+                { new: true }
+            );
+
+            // 2. REFERRAL COMMISSION LOGIC (10% to Inviter)
+            if (user && user.referredBy) {
+                const commission = payment.amount * 0.10; // 10% commission
+                await User.updateOne(
+                    { phone: user.referredBy },
+                    { $inc: { "wallet.totalRevenue": commission, "wallet.todayRevenue": commission } }
+                );
+                console.log(`✅ Commission of ₹${commission} sent to ${user.referredBy}`);
+            }
+        }
+        
+        payment.status = status;
+        await payment.save();
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ success: false }); }
 });
 
-// Port Start
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("🚀 Server running on port " + PORT));
+// --- Baaki APIs (History, Wallet, Team etc.) ---
 
+app.get('/api/history/:phone', async (req, res) => {
+    try {
+        const { phone } = req.params;
+        const payments = await PaymentRequest.find({ phone: phone.trim() }).sort({ createdAt: -1 });
+        const withdraws = await Withdraw.find({ phone: phone.trim() }).sort({ createdAt: -1 });
+        res.json({ success: true, payments, withdraws });
+    } catch (err) { res.status(500).json({ success: false }); }
+});
+
+app.get('/api/wallet/:phone', async (req, res) => {
+    try {
+        const user = await User.findOne({ phone: req.params.phone.trim() });
+        if (!user) return res.json({ success: false });
+        res.json({ success: true, inviteCode: user.inviteCode, wallet: user.wallet });
+    } catch (err) { res.status(500).json({ success: false }); }
+});
+
+app.get('/api/team/:phone', async (req, res) => {
+    try {
+        const user = await User.findOne({ phone: req.params.phone });
+        if (!user) return res.json({ success: false });
+        const teamMembers = await User.find({ referredBy: user.phone }).select('phone createdAt -_id');
+        res.json({ success: true, teamCount: teamMembers.length, teamMembers });
+    } catch (err) { res.status(500).json({ success: false }); }
+});
+
+app.get('/api/admin/dashboard-data', async (req, res) => {
+    try {
+        const pendingPayments = await PaymentRequest.find({ status: "Pending" }).sort({ createdAt: -1 });
+        const withdrawRequests = await Withdraw.find({ status: "Pending" }).sort({ createdAt: -1 });
+        const allPayments = await PaymentRequest.find().limit(50).sort({ createdAt: -1 });
+        const allWithdrawals = await Withdraw.find().limit(50).sort({ createdAt: -1 });
+        const allUsers = await User.find().limit(100);
+        res.json({ success: true, pendingPayments, withdrawRequests, allPayments, allWithdrawals, users: allUsers });
+    } catch (err) { res.status(500).json({ success: false }); }
+});
+
+// --- Cron & Server Start ---
+
+cron.schedule('0 0 * * *', async () => {
+    await User.updateMany({}, { $set: { "wallet.sellToday": 0, "wallet.buyToday": 0, "wallet.todayRevenue": 0, "wallet.buyQuantity": 0 } });
+}, { timezone: "Asia/Kolkata" });
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
